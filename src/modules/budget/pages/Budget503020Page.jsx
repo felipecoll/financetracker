@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../../../config/supabaseClient'; // Importar el cliente de la nube
 
 export default function Budget503020Page() {
   const fixedConcepts = ['Sueldo', 'Aguinaldo', 'BAE', 'Turismo'];
@@ -12,7 +13,10 @@ export default function Budget503020Page() {
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthString());
   const [editingId, setEditingId] = useState(null);
   
-  // CARGA DE PRESUPUESTOS (Sincronizado con todo el ecosistema)
+  // Control de estados de sincronización en la nube
+  const [syncStatus, setSyncStatus] = useState({ loading: false, type: '', message: '' });
+  
+  // CARGA DE PRESUPUESTOS (Sincronizado localmente)
   const [budgetList, setBudgetList] = useState(() => {
     const savedBudgets = localStorage.getItem('mft_budgets');
     return savedBudgets ? JSON.parse(savedBudgets) : [];
@@ -31,18 +35,63 @@ export default function Budget503020Page() {
   const totalDesires = totalIncomeMonth * 0.30;
   const totalSavings = totalIncomeMonth * 0.20;
 
+  // --- LÓGICA DE SINCRONIZACIÓN CON SUPABASE (Misma metodología) ---
+
+  // 1. SUBIR DATOS A LA NUBE
+  const handleUploadToCloud = async () => {
+    setSyncStatus({ loading: true, type: 'upload', message: 'Subiendo planificación a Supabase...' });
+    try {
+      if (budgetList.length === 0) {
+        // Si no hay datos locales, limpiamos la tabla en la nube
+        const { error: deleteError } = await supabase.from('mft_budgets').delete().neq('id', 0);
+        if (deleteError) throw deleteError;
+      } else {
+        // Envío por lote respetando los IDs únicos de carga
+        const { error } = await supabase.from('mft_budgets').upsert(budgetList);
+        if (error) throw error;
+      }
+      setSyncStatus({ loading: false, type: 'success', message: '¡Planificación respaldada en la nube! ✅' });
+    } catch (error) {
+      console.error(error);
+      setSyncStatus({ loading: false, type: 'error', message: `Error al subir: ${error.message} ❌` });
+    }
+    setTimeout(() => setSyncStatus({ loading: false, type: '', message: '' }), 4000);
+  };
+
+  // 2. DESCARGAR DATOS DE LA NUBE
+  const handleDownloadFromCloud = async () => {
+    setSyncStatus({ loading: true, type: 'download', message: 'Descargando datos desde Supabase...' });
+    try {
+      const { data, error } = await supabase
+        .from('mft_budgets')
+        .select('*')
+        .order('month', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        setBudgetList(data); // Modifica el estado y actualiza el localStorage
+        setSyncStatus({ loading: false, type: 'success', message: '¡Ecosistema 50/30/20 sincronizado en este equipo! 📥' });
+      }
+    } catch (error) {
+      console.error(error);
+      setSyncStatus({ loading: false, type: 'error', message: `Error al bajar: ${error.message} ❌` });
+    }
+    setTimeout(() => setSyncStatus({ loading: false, type: '', message: '' }), 4000);
+  };
+
+
+  // --- MANEJO DE FORMULARIO LOCAL ---
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setBudgetForm(prev => ({ ...prev, [name]: value }));
   };
 
-  // GUARDAR O ACTUALIZAR REGISTRO
   const handleSaveBudget = (e) => {
     e.preventDefault();
     if (!budgetForm.concept || !budgetForm.amount) return;
 
     if (editingId) {
-      // Modo Edición: Actualiza el concepto o monto existente
       setBudgetList(prev => prev.map(b => 
         b.id === editingId 
           ? { ...b, concept: budgetForm.concept, amount: parseFloat(budgetForm.amount) } 
@@ -50,7 +99,6 @@ export default function Budget503020Page() {
       ));
       setEditingId(null);
     } else {
-      // Modo Carga Nueva
       const newBudget = { 
         id: Date.now(), 
         month: selectedMonth, 
@@ -62,15 +110,13 @@ export default function Budget503020Page() {
     setBudgetForm({ concept: '', amount: '' });
   };
 
-  // ACTIVAR EL MODO EDICIÓN
   const handleEditClick = (b) => {
     setEditingId(b.id);
     setBudgetForm({ concept: b.concept, amount: b.amount });
   };
 
-  // ELIMINAR REGISTRO (Libera y recalcula los otros módulos automáticamente)
   const handleDeleteBudget = (id) => {
-    if (window.confirm('¿Estás seguro de que deseas eliminar este registro de planificación? Esto alterará los totales calculados de este mes.')) {
+    if (window.confirm('¿Estás seguro de que deseas eliminar este registro local? Se alterarán los totales de este mes.')) {
       setBudgetList(prev => prev.filter(b => b.id !== id));
       if (editingId === id) { 
         setEditingId(null); 
@@ -82,7 +128,43 @@ export default function Budget503020Page() {
   return (
     <div className="space-y-5 flex flex-col h-full max-w-full overflow-x-hidden pb-6">
       
-      {/* HEADER DE MÓDULO */}
+      {/* SECCIÓN NUBE: PANEL DE CONTROL GLOBAL DE PRESUPUESTO */}
+      <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 shadow-md flex flex-col sm:flex-row items-center justify-between gap-4 mx-1 shrink-0">
+        <div className="text-center sm:text-left">
+          <span className="text-[10px] font-black text-blue-400 tracking-wider uppercase block">Nube de Supabase</span>
+          <p className="text-xs text-slate-300 font-semibold">Resguarda o recupera las bases imponibles de la regla 50/30/20.</p>
+        </div>
+        
+        <div className="flex gap-2 w-full sm:w-auto justify-end">
+          <button
+            onClick={handleUploadToCloud}
+            disabled={syncStatus.loading}
+            className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black transition-all shadow-sm disabled:opacity-50 active:scale-95"
+          >
+            {syncStatus.loading && syncStatus.type === 'upload' ? 'Subiendo...' : '📤 Respaldar en Nube'}
+          </button>
+          <button
+            onClick={handleDownloadFromCloud}
+            disabled={syncStatus.loading}
+            className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-black transition-all shadow-sm disabled:opacity-50 active:scale-95"
+          >
+            {syncStatus.loading && syncStatus.type === 'download' ? 'Descargando...' : '📥 Traer de Nube'}
+          </button>
+        </div>
+      </div>
+
+      {/* BANNER NOTIFICADOR DE ESTADO DE SINCRONIZACIÓN */}
+      {syncStatus.message && (
+        <div className={`mx-1 p-3 rounded-xl text-xs font-bold text-center transition-all animate-pulse
+          ${syncStatus.type === 'success' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : ''}
+          ${syncStatus.type === 'error' ? 'bg-red-500/10 text-red-500 border border-red-500/20' : ''}
+          ${syncStatus.type === 'upload' || syncStatus.type === 'download' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : ''}
+        `}>
+          {syncStatus.message}
+        </div>
+      )}
+
+      {/* HEADER DE MÓDULO LOCAL */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 bg-gray-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-gray-200/60 mx-1">
         <div className="text-center sm:text-left">
           <h2 className="text-lg font-black text-black dark:text-white">Planificación Mensual 50/30/20</h2>
@@ -191,7 +273,7 @@ export default function Budget503020Page() {
 
               {/* TABLET / DESKTOP TABLE */}
               <table className="hidden md:table w-full text-left border-collapse">
-                <thead className="bg-gray-50 dark:bg-slate-700/50 sticky top-0 text-[11px] font-bold uppercase text-gray-400 border-b border-gray-100 dark:border-slate-700 z-10">
+                <thead className="bg-gray-50 dark:bg-slate-700/50 sticky top-0 text-[11px] font-bold uppercase text-gray-400 border-b border-gray-100 z-10">
                   <tr>
                     <th className="p-3.5">Mes</th>
                     <th className="p-3.5">Concepto</th>
@@ -205,7 +287,9 @@ export default function Budget503020Page() {
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60 text-xs font-semibold">
                   {filteredBudgets.map((b) => (
                     <tr key={b.id} className={`hover:bg-gray-50/60 dark:hover:bg-slate-700/20 transition-colors ${editingId === b.id ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''}`}>
-                      <td className="p-3.5 text-gray-400 uppercase text-[10px]">{(new Date(b.month + '-02')).toLocaleDateString('es-AR', {month:'short', year:'numeric'})}</td>
+                      <td className="p-3.5 text-gray-400 uppercase text-[10px]">
+                        {(new Date(b.month + '-02')).toLocaleDateString('es-AR', {month:'short', year:'numeric'})}
+                      </td>
                       <td className="p-3.5 font-bold text-black dark:text-white">{b.concept}</td>
                       <td className="p-3.5 text-right font-black text-black dark:text-white">${b.amount.toLocaleString('es-AR')}</td>
                       <td className="p-3.5 text-right text-emerald-600">${(b.amount * 0.5).toLocaleString('es-AR')}</td>
