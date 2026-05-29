@@ -3,8 +3,9 @@ import { ThemeProvider } from './context/ThemeContext';
 import LoginPage from './modules/auth/pages/LoginPage';
 import DashboardLayout from './layouts/DashboardLayout';
 import ExpensesPage from './modules/expenses/pages/ExpensesPage';
-import Budget503020Page from './modules/budget/pages/Budget503020Page'; // Importación añadida
-import { HomeView, IngresosView } from './modules/contentViews';
+import Budget503020Page from './modules/budget/pages/Budget503020Page'; 
+import IncomePage from './modules/income/pages/IncomePage';
+import { HomeView} from './modules/contentViews';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(true); 
@@ -13,7 +14,7 @@ export default function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'home': return <HomeView />;
-      case 'ingresos': return <IngresosView />;
+      case 'ingresos': return <IncomePage />;
       case 'egresos': return <ExpensesPage />; 
       case 'regla': return <Budget503020Page />; // Vinculación del componente dinámico
       default: return <HomeView />;
