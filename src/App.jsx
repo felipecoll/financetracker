@@ -2,21 +2,20 @@ import React, { useState } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import LoginPage from './modules/auth/pages/LoginPage';
 import DashboardLayout from './layouts/DashboardLayout';
-import { HomeView, IngresosView, EgresosView, Regla503020View } from './modules/contentViews';
-import './App.css'
+import ExpensesPage from './modules/expenses/pages/ExpensesPage';
+import Budget503020Page from './modules/budget/pages/Budget503020Page'; // Importación añadida
+import { HomeView, IngresosView } from './modules/contentViews';
 
 export default function App() {
-  // Cambiado a true para desarrollo. Volver a false cuando implementemos Auth real.
   const [isAuthenticated, setIsAuthenticated] = useState(true); 
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState('regla'); // Lo seteamos acá para que veas los cambios al recargar
 
-  // Selector dinámico de contenido central
   const renderContent = () => {
     switch (activeTab) {
       case 'home': return <HomeView />;
       case 'ingresos': return <IngresosView />;
-      case 'egresos': return <EgresosView />;
-      case 'regla': return <Regla503020View />;
+      case 'egresos': return <ExpensesPage />; 
+      case 'regla': return <Budget503020Page />; // Vinculación del componente dinámico
       default: return <HomeView />;
     }
   };
